@@ -470,7 +470,7 @@ function generateEmailSummary() {
 		}
 
 		// send HTML email
-		const subject = `Voice Summary: ${totalEmails} emails from last ${parameters.summary_days} days`;
+		const subject = `AI Summary: ${totalEmails} emails from last ${parameters.summary_days} days`;
 		Logger.log(`sending summary: ${totalEmails} total emails across ${labelSummaries.length} labels`);
 
 		for (const emailAddress of emailAddresses) {

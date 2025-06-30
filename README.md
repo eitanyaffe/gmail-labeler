@@ -16,7 +16,6 @@ Useful for professionals, healthcare workers, freelancers, or anyone receiving 5
 
 - Gmail account
 - OpenAI API key ($3-15/month depending on usage)
-- 20 minutes setup time
 
 ## Setup
 

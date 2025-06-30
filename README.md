@@ -94,7 +94,7 @@ Edit in "Gmail Labeler Parameters" sheet:
 ## Cost
 
 - Email organization: ~$0.001 per email ($3-10/month typical)
-- Optional summaries: ~$0.01-0.05 per summary (~$1-5/month additional)
+- Optional summaries: $0.01-0.05 per summary (~$1-5/month additional)
 
 ## Troubleshooting
 

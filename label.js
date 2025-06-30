@@ -16,7 +16,13 @@ const DEFAULT_PARAMETERS = {
 	apiKey: "API_KEY",
 	resorting: "F",
 	style: "days",
-	dayCount: 1
+	dayCount: 1,
+	maxWords: 1000,
+	summary_days: 3,
+	summary_count: 20,
+	summary_time_minutes: 20,
+	summary_emails: Session.getActiveUser().getEmail(),
+	summary_prompt: "Create a brief, professional summary for listening while driving. Focus on key actionable items and important matters that need attention. Be concise and skip pleasantries. Organize by priority and urgency."
 };
 
 function createLabelsSheet_() {
@@ -102,7 +108,13 @@ function createParametersSheet_() {
 			["apiKey", existingApiKey],
 			["resorting", "F"],
 			["style", "days"],
-			["dayCount", "1"]
+			["dayCount", "1"],
+			["maxWords", "1000"],
+			["summary_days", "3"],
+			["summary_count", "20"],
+			["summary_time_minutes", "20"],
+			["summary_emails", Session.getActiveUser().getEmail()],
+			["summary_prompt", "Create a brief, professional summary for listening while driving. Focus on key actionable items and important matters that need attention. Be concise and skip pleasantries. Organize by priority and urgency."]
 		];
 
 		sheet.getRange(2, 1, sampleData.length, 2).setValues(sampleData);
@@ -166,7 +178,8 @@ function getParameters_() {
 				const paramValue = data[i][1];
 
 				// Convert numeric values
-				if (paramName === "emailCount" || paramName === "dayCount") {
+				if (paramName === "emailCount" || paramName === "dayCount" || paramName === "maxWords" ||
+					paramName === "summary_days" || paramName === "summary_count" || paramName === "summary_time_minutes") {
 					parameters[paramName] = parseInt(paramValue) || DEFAULT_PARAMETERS[paramName];
 				} else {
 					parameters[paramName] = paramValue;
@@ -181,6 +194,12 @@ function getParameters_() {
 		if (!parameters.resorting) parameters.resorting = DEFAULT_PARAMETERS.resorting;
 		if (!parameters.style) parameters.style = DEFAULT_PARAMETERS.style;
 		if (!parameters.dayCount) parameters.dayCount = DEFAULT_PARAMETERS.dayCount;
+		if (!parameters.maxWords) parameters.maxWords = DEFAULT_PARAMETERS.maxWords;
+		if (!parameters.summary_days) parameters.summary_days = DEFAULT_PARAMETERS.summary_days;
+		if (!parameters.summary_count) parameters.summary_count = DEFAULT_PARAMETERS.summary_count;
+		if (!parameters.summary_time_minutes) parameters.summary_time_minutes = DEFAULT_PARAMETERS.summary_time_minutes;
+		if (!parameters.summary_emails) parameters.summary_emails = DEFAULT_PARAMETERS.summary_emails;
+		if (!parameters.summary_prompt) parameters.summary_prompt = DEFAULT_PARAMETERS.summary_prompt;
 
 		return parameters;
 	} catch (error) {
@@ -189,12 +208,28 @@ function getParameters_() {
 	}
 }
 
-function callOpenAIClassify_(subject, body, labelConfig, model, apiKey) {
+function truncateToMaxWords_(text, maxWords) {
+	if (!text || maxWords <= 0) return text;
+
+	const words = text.split(/\s+/);
+	if (words.length <= maxWords) return text;
+
+	return words.slice(0, maxWords).join(' ') + '...';
+}
+
+function callOpenAIClassify_(subject, body, attachmentNames, labelConfig, model, apiKey) {
 	try {
 		const labels = Object.keys(labelConfig).join(", ");
-		const prompt = `Classify this email into one of these labels: ${labels}. Return only one word (the label).\n\nDefinitions:\n` +
+		let prompt = `Classify this email into one of these labels: ${labels}. Return only one word (the label).\n\nDefinitions:\n` +
 			Object.entries(labelConfig).map(([label, desc]) => `${label}: ${desc}`).join("\n") +
-			`\n\nSubject: ${subject}\n\nBody: ${body}\n\nLabel:`;
+			`\n\nSubject: ${subject}\n\nBody: ${body}`;
+
+		// Add attachment info if present
+		if (attachmentNames && attachmentNames.trim()) {
+			prompt += `\n\nAttachments: ${attachmentNames}`;
+		}
+
+		prompt += `\n\nLabel:`;
 
 		const payload = {
 			model: model,
@@ -259,7 +294,14 @@ function classifyAndLabelEmails() {
 			const msgs = thread.getMessages();
 			const lastMsg = msgs[msgs.length - 1];
 			const subject = lastMsg.getSubject();
-			const body = lastMsg.getPlainBody();
+			let body = lastMsg.getPlainBody();
+
+			// Get attachment names
+			const attachments = lastMsg.getAttachments();
+			const attachmentNames = attachments.map(att => att.getName()).join(', ');
+
+			// Truncate body to maxWords
+			body = truncateToMaxWords_(body, parameters.maxWords);
 
 			const labels = thread.getLabels().map(l => l.getName());
 
@@ -282,7 +324,7 @@ function classifyAndLabelEmails() {
 			const processedLabel = GmailApp.getUserLabelByName("ai") || GmailApp.createLabel("ai");
 			thread.addLabel(processedLabel);
 
-			const label = callOpenAIClassify_(subject, body, labelConfig, parameters.model, parameters.apiKey);
+			const label = callOpenAIClassify_(subject, body, attachmentNames, labelConfig, parameters.model, parameters.apiKey);
 
 			// skip if label is other
 			if (label === "Other") continue;

@@ -111,9 +111,12 @@ Edit in "Gmail Labeler Parameters" sheet:
 
 ## How It Works
 
-1. Reads configuration from Google Sheets
-2. Fetches recent emails from Gmail  
-3. Sends email content to OpenAI for classification
-4. Applies labels to emails
-5. Marks processed emails to avoid reprocessing
-6. Optionally generates and sends summary emails
+1. **Configuration retrieval**: Pulls label definitions and parameters from Google Sheets API
+2. **Email ingestion**: Uses Gmail API to fetch unprocessed threads (excludes emails with 'ai' label)
+3. **Content preprocessing**: Truncates email bodies to `maxWords` limit, extracts attachment names
+4. **AI classification**: Sends structured prompts to OpenAI Chat Completions API with email content
+5. **Label application**: Creates Gmail labels via API if missing, applies classifications automatically
+6. **State tracking**: Marks processed emails with 'ai' label to prevent redundant API calls
+7. **Optional summarization**: Aggregates classified emails, generates summaries via OpenAI, delivers via Gmail API
+
+Runs on Google Apps Script runtime with automatic retry handling and error logging. No local storage required.

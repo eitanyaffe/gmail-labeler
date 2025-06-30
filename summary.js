@@ -1,43 +1,6 @@
-// Voice-optimized summary prompt - edit this to customize AI behavior
-// This prompt is designed for listening while driving: one sentence per email, 
-// urgency detection, natural voice flow, emphasizing what people need from you.
-const DEFAULT_SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
-
-CRITICAL REQUIREMENTS:
-- Write exactly one sentence per email, no more
-- Estimate reading time at ~150 words per minute
-- When approaching time limit, stop and say "and there were X more emails in this label"
-- Skip newsletters, notifications, confirmations completely - focus only on actionable communication
-
-CONTENT RULES:
-- Start with time-sensitive emails first, then proceed chronologically from oldest
-- Use sender's actual name when available (first and last name preferred)
-- For unknown senders, describe what they represent (e.g. "the billing department", "a potential client", "the journal Nature")
-- Use natural relative time ("this morning", "yesterday", "Monday", "three days ago")
-- Sound like a professional assistant speaking naturally
-- EMPHASIZE what people are asking for, requesting, or need from You - make their requests clear and actionable
-- When emails are part of the same thread, summarize the conversation flow rather than individual emails
-- For threaded conversations, mention the progression (e.g. "john asked about the project, You responded with questions, and he clarified the timeline")
-- For lengthy threads (marked as "LENGTHY THREAD"), mention this is a long conversation and you're focusing on recent activity (e.g. "john and You have been discussing the project in a lengthy thread, with the most recent exchange showing...")
-
-URGENCY DETECTION:
-- Identify and prioritize: deadlines, patient communications, stressed language, time-sensitive requests
-- Mention specific deadlines when critical (e.g. "john said the paper is due tomorrow")
-- Flag urgent items by leading with urgency ("URGENT: sarah needs...")
-- Recognize professional stress indicators and respond appropriately
-
-FORMAT:
-- Start each label with: "[Label name]: X emails/threads."
-- One sentence per email capturing: who, what they want/need from You, when if urgent
-- For threaded conversations: treat the entire thread as one summary sentence describing the conversation flow and what's needed from You
-- End with count if time runs out: "and there were X more emails in this label."
-
-Remember: This person is driving and needs clear, actionable information about what others need from them so they can act when they have time.`;
-
-// Thread-specific prompt for individual thread processing
-const THREAD_SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
-
-TASK: Summarize this email thread in 1-2 sentences maximum.
+// Unified voice-optimized summary prompt - handles both label and thread processing
+// This prompt is designed for listening while driving: urgency detection, natural voice flow, emphasizing what people need from you.
+const SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
 
 COMPRESSION LEVELS:
 - detailed: Include context, background, and specific details
@@ -45,22 +8,26 @@ COMPRESSION LEVELS:
 - succinct: Brief summary focusing on main points only
 - very succinct: Ultra-brief, just essential facts
 
-RULES:
-- For single emails: Write exactly one sentence capturing who, what they want/need from You, when if urgent
-- For threads (multiple emails): Write 1-2 sentences describing the conversation flow and what's currently needed from You
+CONTENT RULES:
+- Start with time-sensitive emails first, then proceed chronologically from oldest
 - Use sender's actual name when available (first and last name preferred)
-- For unknown senders, describe what they represent (e.g. "the billing department", "a potential client")
-- Use specific day references combining relative and absolute time (e.g. "yesterday (on Monday)", "today (Tuesday)", "last Friday", "this morning (Wednesday)")
-- Sound like a professional assistant speaking naturally
-- EMPHASIZE what people are requesting, asking for, or need from You - make their requests clear and actionable
-- Skip newsletters, notifications, confirmations completely
+- For unknown senders, describe what they represent (e.g. "the billing department", "a potential client", "the journal Nature")
+- Use natural relative time ("this morning", "yesterday", "Monday", "three days ago")
+- Sound like a professional assistant speaking directly to the recipient
+- EMPHASIZE what people are asking for, requesting, or need from you - make their requests clear and actionable
+- Write as if speaking TO the recipient - use "you" when referring to what they need to do
+- When emails are part of the same thread, summarize the conversation flow rather than individual emails
+- For threaded conversations, mention the progression (e.g. "john asked about the project, you responded with questions, and he clarified the timeline")
+- For lengthy threads (marked as "LENGTHY THREAD"), mention this is a long conversation and you're focusing on recent activity (e.g. "john and you have been discussing the project in a lengthy thread, with the most recent exchange showing...")
+- Skip newsletters, notifications, confirmations completely - focus only on actionable communication
 
 URGENCY DETECTION:
 - Identify and prioritize: deadlines, patient communications, stressed language, time-sensitive requests
 - Mention specific deadlines when critical (e.g. "john said the paper is due tomorrow")
 - Flag urgent items by leading with urgency ("URGENT: sarah needs...")
+- Recognize professional stress indicators and respond appropriately
 
-Remember: This person is driving and needs clear, actionable information about what others need from them so they can act when they have time.`;
+Remember: This person is driving and needs clear, actionable information about what others need from them so they can act when they have time. Write as if you are speaking directly TO them using "you".`;
 
 // Default summary parameters (constants are shared from label.js)
 const DEFAULT_SUMMARY_PARAMETERS = {
@@ -68,7 +35,7 @@ const DEFAULT_SUMMARY_PARAMETERS = {
 	summary_count: 20,
 	summary_time_minutes: 20,
 	summary_emails: Session.getActiveUser().getEmail(),
-	summary_prompt: DEFAULT_SUMMARY_PROMPT,
+	summary_prompt: SUMMARY_PROMPT,
 	summary_compression: "standard"
 };
 
@@ -217,7 +184,7 @@ function truncateToMaxWords_(text, maxWords) {
 	return words.slice(0, maxWords).join(' ') + '...';
 }
 
-function callOpenAISummarizeThread_(threadEmails, model, apiKey, maxWords, userEmail, compressionLevel) {
+function callOpenAISummarizeThread_(threadEmails, model, apiKey, maxWords, userEmail, compressionLevel, summaryPrompt) {
 	try {
 		// optimize long threads by keeping only newest 2 emails
 		let optimizedEmails = threadEmails;
@@ -253,22 +220,35 @@ function callOpenAISummarizeThread_(threadEmails, model, apiKey, maxWords, userE
 
 		Logger.log(`using compression level: "${compressionLevel}" for thread summarization`);
 
-		const fullPrompt = `CRITICAL: Use "${compressionLevel}" compression level for this summary.
+		// log the prompt structure without email content
+		const promptWithoutEmails = `${summaryPrompt}
 
-COMPRESSION LEVELS EXPLAINED:
-- detailed: Include context, background, and specific details
-- standard: Balanced summary with key information  
-- succinct: Brief summary focusing on main points only
-- very succinct: Ultra-brief, just essential facts
+CRITICAL: Use "${compressionLevel}" compression level for this summary.
 
-YOU MUST USE "${compressionLevel}" COMPRESSION - this is the most important instruction.
-
-${THREAD_SUMMARY_PROMPT}
-
-CURRENT TASK:
+CURRENT TASK: Summarize this ${threadType} in ${isThread ? '1-2 sentences maximum' : 'exactly one sentence'}.
 This is a ${threadType} with ${optimizedEmails.length} email${optimizedEmails.length > 1 ? 's' : ''} (${threadEmails.length - optimizedEmails.length > 0 ? `optimized from ${threadEmails.length} total` : 'complete thread'}).
 The email recipient is: ${recipientName}
-When referring to the email recipient, use "${recipientName}" naturally with proper grammar and capitalization.
+Write the summary as if you are speaking directly TO ${recipientName}. Use "you" when referring to what ${recipientName} needs to do or what is being requested of ${recipientName}.
+
+CURRENT DATE CONTEXT:
+Today is ${currentDayName}, ${currentDateString}. Use this to create specific day references like "yesterday (on Monday)", "today (Tuesday)", etc.
+
+[EMAIL CONTENT WILL BE INSERTED HERE]
+
+Generate the summary using "${compressionLevel}" compression (1-2 sentences max):`;
+
+		Logger.log(`=== PROMPT STRUCTURE (without email content) ===`);
+		Logger.log(promptWithoutEmails);
+		Logger.log(`=== END PROMPT STRUCTURE ===`);
+
+		const fullPrompt = `${summaryPrompt}
+
+CRITICAL: Use "${compressionLevel}" compression level for this summary.
+
+CURRENT TASK: Summarize this ${threadType} in ${isThread ? '1-2 sentences maximum' : 'exactly one sentence'}.
+This is a ${threadType} with ${optimizedEmails.length} email${optimizedEmails.length > 1 ? 's' : ''} (${threadEmails.length - optimizedEmails.length > 0 ? `optimized from ${threadEmails.length} total` : 'complete thread'}).
+The email recipient is: ${recipientName}
+Write the summary as if you are speaking directly TO ${recipientName}. Use "you" when referring to what ${recipientName} needs to do or what is being requested of ${recipientName}.
 
 CURRENT DATE CONTEXT:
 Today is ${currentDayName}, ${currentDateString}. Use this to create specific day references like "yesterday (on Monday)", "today (Tuesday)", etc.
@@ -277,11 +257,6 @@ Email content (sorted by date):
 ${emailTexts}
 
 Generate the summary using "${compressionLevel}" compression (1-2 sentences max):`;
-
-		// log the complete prompt being sent to OpenAI
-		// Logger.log(`=== FULL OPENAI PROMPT ===`);
-		// Logger.log(fullPrompt);
-		// Logger.log(`=== END PROMPT ===`);
 
 		const payload = {
 			model: model,
@@ -316,7 +291,7 @@ Generate the summary using "${compressionLevel}" compression (1-2 sentences max)
 	}
 }
 
-function callOpenAISummarizeLabel_(emailsData, labelName, model, apiKey, maxWords, userEmail, compressionLevel) {
+function callOpenAISummarizeLabel_(emailsData, labelName, model, apiKey, maxWords, userEmail, compressionLevel, summaryPrompt) {
 	try {
 		// group emails by thread
 		const threadGroups = {};
@@ -342,7 +317,8 @@ function callOpenAISummarizeLabel_(emailsData, labelName, model, apiKey, maxWord
 				apiKey,
 				maxWords,
 				userEmail,
-				compressionLevel
+				compressionLevel,
+				summaryPrompt
 			);
 
 			if (threadSummary && threadSummary !== "summary generation failed") {
@@ -442,7 +418,8 @@ function generateEmailSummary() {
 					parameters.apiKey,
 					parameters.maxWords || 500,
 					parameters.summary_emails.split(',')[0].trim(),
-					compressionLevel
+					compressionLevel,
+					parameters.summary_prompt || SUMMARY_PROMPT
 				);
 
 				Logger.log(`completed summary for label "${labelName}"`);

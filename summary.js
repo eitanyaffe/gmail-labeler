@@ -1,10 +1,73 @@
+// Voice-optimized summary prompt - edit this to customize AI behavior
+// This prompt is designed for listening while driving: one sentence per email, 
+// urgency detection, natural voice flow, time management per label.
+const DEFAULT_SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
+
+CRITICAL REQUIREMENTS:
+- Write exactly one sentence per email, no more
+- Estimate reading time at ~150 words per minute
+- When approaching time limit, stop and say "and there were X more emails in this label"
+- Skip newsletters, notifications, confirmations completely - focus only on actionable communication
+
+CONTENT RULES:
+- Start with time-sensitive emails first, then proceed chronologically from oldest
+- Use sender's actual name when available (first and last name preferred)
+- For unknown senders, describe what they represent (e.g. "the billing department", "a potential client", "the journal Nature")
+- Use natural relative time ("this morning", "yesterday", "Monday", "three days ago")
+- Sound like a professional assistant speaking naturally
+- When emails are part of the same thread, summarize the conversation flow rather than individual emails
+- For threaded conversations, mention the progression (e.g. "john asked about the project, You responded with questions, and he clarified the timeline")
+- For lengthy threads (marked as "LENGTHY THREAD"), mention this is a long conversation and you're focusing on recent activity (e.g. "john and You have been discussing the project in a lengthy thread, with the most recent exchange showing...")
+
+URGENCY DETECTION:
+- Identify and prioritize: deadlines, patient communications, stressed language, time-sensitive requests
+- Mention specific deadlines when critical (e.g. "john said the paper is due tomorrow")
+- Flag urgent items by leading with urgency ("URGENT: sarah needs...")
+- Recognize professional stress indicators and respond appropriately
+
+FORMAT:
+- Start each label with: "[Label name]: X emails spanning Y days."
+- One sentence per email capturing: who, what they want/need, when if urgent
+- For threaded conversations: treat the entire thread as one summary sentence describing the conversation flow
+- End with count if time runs out: "and there were X more emails in this label."
+
+Remember: This person is driving and needs clear, actionable information they can act on when they have time.`;
+
+// Thread-specific prompt for individual thread processing
+const THREAD_SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
+
+TASK: Summarize this email thread in 1-2 sentences maximum.
+
+COMPRESSION LEVELS:
+- detailed: Include context, background, and specific details
+- standard: Balanced summary with key information
+- succinct: Brief summary focusing on main points only
+- very succinct: Ultra-brief, just essential facts
+
+RULES:
+- For single emails: Write exactly one sentence capturing who, what they want/need, when if urgent
+- For threads (multiple emails): Write 1-2 sentences describing the conversation flow and current status
+- Use sender's actual name when available (first and last name preferred)
+- For unknown senders, describe what they represent (e.g. "the billing department", "a potential client")
+- Use specific day references combining relative and absolute time (e.g. "yesterday (on Monday)", "today (Tuesday)", "last Friday", "this morning (Wednesday)")
+- Sound like a professional assistant speaking naturally
+- Skip newsletters, notifications, confirmations completely
+
+URGENCY DETECTION:
+- Identify and prioritize: deadlines, patient communications, stressed language, time-sensitive requests
+- Mention specific deadlines when critical (e.g. "john said the paper is due tomorrow")
+- Flag urgent items by leading with urgency ("URGENT: sarah needs...")
+
+Remember: This person is driving and needs clear, actionable information they can act on when they have time.`;
+
 // Default summary parameters (constants are shared from label.js)
 const DEFAULT_SUMMARY_PARAMETERS = {
 	summary_days: 3,
 	summary_count: 20,
 	summary_time_minutes: 20,
 	summary_emails: Session.getActiveUser().getEmail(),
-	summary_prompt: "Create a brief, professional summary for listening while driving. Focus on key actionable items and important matters that need attention. Be concise and skip pleasantries. Organize by priority and urgency."
+	summary_prompt: DEFAULT_SUMMARY_PROMPT,
+	summary_compression: "standard"
 };
 
 function getLabelConfig_() {
@@ -81,19 +144,61 @@ function getEmailsFromLabel_(labelName, maxCount, maxDays) {
 		const threads = GmailApp.search(query, 0, maxCount);
 
 		const emails = [];
-		for (const thread of threads) {
-			const messages = thread.getMessages();
-			const lastMessage = messages[messages.length - 1];
+		let emailCount = 0;
 
-			emails.push({
-				subject: lastMessage.getSubject(),
-				body: lastMessage.getPlainBody(),
-				date: lastMessage.getDate(),
-				from: lastMessage.getFrom()
-			});
+		for (const thread of threads) {
+			if (emailCount >= maxCount) break;
+
+			const messages = thread.getMessages();
+			const threadEmails = [];
+
+			// process all messages in this thread (already in chronological order)
+			for (const message of messages) {
+				if (emailCount >= maxCount) break;
+
+				threadEmails.push({
+					subject: message.getSubject(),
+					body: message.getPlainBody(),
+					date: message.getDate(),
+					from: message.getFrom(),
+					threadId: thread.getId(),
+					isThreadStart: threadEmails.length === 0,
+					threadPosition: threadEmails.length + 1,
+					threadSize: messages.length
+				});
+				emailCount++;
+			}
+
+			// add thread emails in order to main collection
+			emails.push(...threadEmails);
+
+			if (messages.length > 1) {
+				Logger.log(`found thread with ${messages.length} messages in label "${labelName}"`);
+			}
 		}
 
-		return emails;
+		// sort threads by most recent message date, but preserve within-thread order
+		const threadGroups = {};
+		emails.forEach(email => {
+			if (!threadGroups[email.threadId]) {
+				threadGroups[email.threadId] = [];
+			}
+			threadGroups[email.threadId].push(email);
+		});
+
+		// sort thread groups by their most recent message
+		const sortedThreadGroups = Object.values(threadGroups).sort((threadA, threadB) => {
+			const latestA = Math.max(...threadA.map(e => e.date.getTime()));
+			const latestB = Math.max(...threadB.map(e => e.date.getTime()));
+			return latestA - latestB; // oldest thread first
+		});
+
+		// flatten back to single array, preserving thread order
+		const sortedEmails = sortedThreadGroups.flat();
+
+		Logger.log(`retrieved ${sortedEmails.length} emails from ${Object.keys(threadGroups).length} threads in label "${labelName}"`);
+
+		return sortedEmails;
 	} catch (error) {
 		Logger.log("error getting emails from label " + labelName + ": " + error.toString());
 		return [];
@@ -106,25 +211,75 @@ function truncateToMaxWords_(text, maxWords) {
 	const words = text.split(/\s+/);
 	if (words.length <= maxWords) return text;
 
+	Logger.log(`truncating email body from ${words.length} words to ${maxWords} words`);
 	return words.slice(0, maxWords).join(' ') + '...';
 }
 
-function callOpenAISummarize_(emailsData, labelName, timeMinutes, prompt, model, apiKey, maxWords) {
+function callOpenAISummarizeThread_(threadEmails, model, apiKey, maxWords, userEmail, compressionLevel) {
 	try {
-		const emailTexts = emailsData.map(email =>
-			`From: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date.toDateString()}\nBody: ${truncateToMaxWords_(email.body, maxWords)}`
-		).join('\n\n---\n\n');
+		// optimize long threads by keeping only newest 2 emails
+		let optimizedEmails = threadEmails;
+		if (threadEmails.length > 3) {
+			optimizedEmails = threadEmails.slice(-2);
+			Logger.log(`long thread detected (${threadEmails.length} emails) - focusing on newest 2 emails only`);
+		}
 
-		const fullPrompt = `${prompt}
+		const emailTexts = optimizedEmails.map(email => {
+			let threadInfo = '';
+			if (email.threadSize > 1) {
+				if (email.threadSize > 3) {
+					threadInfo = `Thread: Latest ${email.threadPosition}/${email.threadSize} (LENGTHY THREAD - SHOWING RECENT ACTIVITY ONLY)`;
+				} else {
+					threadInfo = `Thread: ${email.threadPosition}/${email.threadSize} ${email.isThreadStart ? '(THREAD START)' : '(CONTINUATION)'}`;
+				}
+			}
 
-Label: ${labelName}
-Target duration: ${timeMinutes} minutes of listening time
-Number of emails: ${emailsData.length}
+			return `${threadInfo ? threadInfo + '\n' : ''}From: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date.toDateString()}\nBody: ${truncateToMaxWords_(email.body, maxWords)}`;
+		}).join('\n\n---\n\n');
 
-Email content:
+		// determine user name for personalization from email address
+		const nameToReplace = userEmail ? userEmail.split('@')[0].replace(/[._]/g, ' ') : '';
+		Logger.log(`using email-based personalization: "${nameToReplace}" -> "You"`);
+
+		const isThread = optimizedEmails.length > 1;
+		const threadType = isThread ? 'thread' : 'single email';
+
+		const currentDate = new Date();
+		const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+		const currentDayName = dayNames[currentDate.getDay()];
+		const currentDateString = currentDate.toDateString();
+
+		Logger.log(`using compression level: "${compressionLevel}" for thread summarization`);
+
+		const fullPrompt = `CRITICAL: Use "${compressionLevel}" compression level for this summary.
+
+COMPRESSION LEVELS EXPLAINED:
+- detailed: Include context, background, and specific details
+- standard: Balanced summary with key information  
+- succinct: Brief summary focusing on main points only
+- very succinct: Ultra-brief, just essential facts
+
+YOU MUST USE "${compressionLevel}" COMPRESSION - this is the most important instruction.
+
+${THREAD_SUMMARY_PROMPT}
+
+CURRENT TASK:
+This is a ${threadType} with ${optimizedEmails.length} email${optimizedEmails.length > 1 ? 's' : ''} (${threadEmails.length - optimizedEmails.length > 0 ? `optimized from ${threadEmails.length} total` : 'complete thread'}).
+The email recipient is: ${userEmail}
+When referring to "${nameToReplace}" or variations of this name, use "You" instead.
+
+CURRENT DATE CONTEXT:
+Today is ${currentDayName}, ${currentDateString}. Use this to create specific day references like "yesterday (on Monday)", "today (Tuesday)", etc.
+
+Email content (sorted by date):
 ${emailTexts}
 
-Provide a concise summary focusing on actionable items and urgent matters:`;
+Generate the summary using "${compressionLevel}" compression (1-2 sentences max):`;
+
+		// log the complete prompt being sent to OpenAI
+		// Logger.log(`=== FULL OPENAI PROMPT ===`);
+		// Logger.log(fullPrompt);
+		// Logger.log(`=== END PROMPT ===`);
 
 		const payload = {
 			model: model,
@@ -154,8 +309,64 @@ Provide a concise summary focusing on actionable items and urgent matters:`;
 
 		return json.choices[0].message.content.trim();
 	} catch (error) {
-		Logger.log("error in openai summarization: " + error.toString());
+		Logger.log("error in openai thread summarization: " + error.toString());
 		return "summary generation failed";
+	}
+}
+
+function callOpenAISummarizeLabel_(emailsData, labelName, model, apiKey, maxWords, userEmail, compressionLevel) {
+	try {
+		// group emails by thread
+		const threadGroups = {};
+		emailsData.forEach(email => {
+			if (!threadGroups[email.threadId]) {
+				threadGroups[email.threadId] = [];
+			}
+			threadGroups[email.threadId].push(email);
+		});
+
+		const threadIds = Object.keys(threadGroups);
+		Logger.log(`processing ${threadIds.length} threads in label "${labelName}"`);
+
+		// process each thread separately with OpenAI
+		const threadSummaries = [];
+		for (const threadId of threadIds) {
+			const threadEmails = threadGroups[threadId];
+			Logger.log(`processing thread with ${threadEmails.length} emails`);
+
+			const threadSummary = callOpenAISummarizeThread_(
+				threadEmails,
+				model,
+				apiKey,
+				maxWords,
+				userEmail,
+				compressionLevel
+			);
+
+			if (threadSummary && threadSummary !== "summary generation failed") {
+				// create Gmail link for the thread
+				const gmailLink = `https://mail.google.com/mail/u/0/#all/${threadId}`;
+				const linkedSummary = `${threadSummary} <a href="${gmailLink}">[View]</a>`;
+				Logger.log(`created Gmail link for thread: ${gmailLink}`);
+				threadSummaries.push(linkedSummary);
+			}
+		}
+
+		// combine thread summaries with label header
+		const totalEmails = emailsData.length;
+		const timeRange = formatTimeRange_(emailsData);
+
+		let labelSummary = `<b>${labelName}</b>: ${totalEmails} emails (${timeRange})\n\n`;
+		threadSummaries.forEach(summary => {
+			labelSummary += summary + '\n\n';
+		});
+
+		Logger.log(`completed label "${labelName}" with ${threadSummaries.length} thread summaries`);
+		return labelSummary;
+
+	} catch (error) {
+		Logger.log("error in label summarization: " + error.toString());
+		return `${labelName}: summary generation failed`;
 	}
 }
 
@@ -175,8 +386,14 @@ function formatTimeRange_(emails) {
 
 function generateEmailSummary() {
 	try {
+		Logger.log("starting email summary generation");
 		const labelConfig = getLabelConfig_();
 		const parameters = getParameters_();
+
+		Logger.log("loaded parameters:");
+		Object.keys(parameters).forEach(key => {
+			Logger.log(`  ${key}: ${parameters[key]}`);
+		});
 
 		if (!parameters.summary_emails || parameters.summary_emails.trim() === "") {
 			parameters.summary_emails = Session.getActiveUser().getEmail();
@@ -198,68 +415,69 @@ function generateEmailSummary() {
 
 		let summaryContent = "";
 		let totalEmails = 0;
-
-		// overview section
-		let overviewLines = [];
 		const labelSummaries = [];
+
+		const compressionLevel = parameters.summary_compression || "standard";
+		Logger.log(`loaded compression parameter: "${compressionLevel}"`);
+		Logger.log(`processing ${labelNames.filter(name => name !== "Other").length} labels using thread-based summarization with "${compressionLevel}" compression`);
 
 		for (const labelName of labelNames) {
 			if (labelName === "Other") continue; // skip Other label
 
+			Logger.log(`processing label: ${labelName}`);
 			const emails = getEmailsFromLabel_(labelName, parameters.summary_count, parameters.summary_days);
 			totalEmails += emails.length;
 
 			if (emails.length > 0) {
-				const timeRange = formatTimeRange_(emails);
-				overviewLines.push(`${labelName}: ${emails.length} emails (${timeRange})`);
+				Logger.log(`found ${emails.length} emails in label "${labelName}" - generating summary`);
+				Logger.log(`using maxWords limit: ${parameters.maxWords || 500} words per email`);
 
-				// generate summary for this label
-				const summary = callOpenAISummarize_(
+				// generate voice-ready summary for this label using thread-based approach
+				const summary = callOpenAISummarizeLabel_(
 					emails,
 					labelName,
-					Math.floor(parameters.summary_time_minutes / labelNames.length),
-					parameters.summary_prompt,
 					parameters.model || "gpt-4o",
 					parameters.apiKey,
-					parameters.maxWords || 1000
+					parameters.maxWords || 500,
+					parameters.summary_emails.split(',')[0].trim(),
+					compressionLevel
 				);
 
+				Logger.log(`completed summary for label "${labelName}"`);
 				labelSummaries.push({
 					label: labelName,
 					count: emails.length,
 					summary: summary
 				});
+			} else {
+				Logger.log(`no emails found in label "${labelName}" - skipping`);
 			}
 		}
 
-		// build email content
-		summaryContent += `EMAIL SUMMARY - ${new Date().toDateString()}\n\n`;
-		summaryContent += `OVERVIEW:\n`;
-		summaryContent += `total emails: ${totalEmails}\n`;
-		summaryContent += `time period: last ${parameters.summary_days} days\n`;
-		summaryContent += `target listening time: ${parameters.summary_time_minutes} minutes\n\n`;
+		// build voice-optimized email content (HTML formatted)
+		summaryContent += `<b>Email Summary - ${new Date().toDateString()}</b><br><br>`;
+		summaryContent += `Total: ${totalEmails} emails from the last ${parameters.summary_days} days<br>`;
+		summaryContent += `Target listening time: ${parameters.summary_time_minutes} minutes<br><br>`;
 
-		if (overviewLines.length > 0) {
-			summaryContent += overviewLines.join('\n') + '\n\n';
-		}
-
-		summaryContent += `DETAILED SUMMARIES:\n\n`;
-
+		// add voice-ready summaries (now includes label headers)
 		for (const labelSummary of labelSummaries) {
-			summaryContent += `--- ${labelSummary.label.toUpperCase()} (${labelSummary.count} emails) ---\n`;
-			summaryContent += labelSummary.summary + '\n\n';
+			summaryContent += labelSummary.summary.replace(/\n/g, '<br>');
 		}
 
 		if (totalEmails === 0) {
-			summaryContent += "no new emails found in the specified time period.\n";
+			summaryContent += "No new emails found in the specified time period.<br>";
+			Logger.log("no emails found across all labels - sending empty summary");
 		}
 
-		// send email
-		const subject = `AI email summary - ${totalEmails} emails from last ${parameters.summary_days} days`;
+		// send HTML email
+		const subject = `Voice Summary: ${totalEmails} emails from last ${parameters.summary_days} days`;
+		Logger.log(`sending summary: ${totalEmails} total emails across ${labelSummaries.length} labels`);
 
 		for (const emailAddress of emailAddresses) {
 			if (emailAddress && emailAddress.includes('@')) {
-				GmailApp.sendEmail(emailAddress, subject, summaryContent);
+				GmailApp.sendEmail(emailAddress, subject, '', {
+					htmlBody: summaryContent
+				});
 				Logger.log("summary sent to: " + emailAddress);
 			}
 		}
@@ -298,7 +516,9 @@ function setupSummaryParameters() {
 			if (!existingParams.has(key)) {
 				// get current user email for summary_emails parameter
 				const actualValue = key === "summary_emails" ? Session.getActiveUser().getEmail() : value;
-				newParams.push([key, actualValue.toString()]);
+				// handle long prompt text properly
+				const stringValue = key === "summary_prompt" ? actualValue : actualValue.toString();
+				newParams.push([key, stringValue]);
 			}
 		});
 

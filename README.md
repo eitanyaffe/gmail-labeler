@@ -1,14 +1,17 @@
 # Gmail Auto-Organizer
 
-Automatically organizes Gmail emails into labels using AI classification.
+Automatically organizes Gmail emails into labels using AI classification, with optional voice-ready daily summaries.
 
-Useful for professionals, healthcare workers, freelancers, or anyone receiving 50+ emails daily who needs automatic email sorting. Saves time by eliminating manual email organization.
+Useful for professionals, healthcare workers, freelancers, or anyone receiving 50+ emails daily who needs automatic email sorting and intelligent summaries for busy schedules.
 
 ## Features
 
 - **Email Organization**: Automatically classifies and labels emails based on configurable categories
-- **Optional Daily Summaries**: Generates AI summaries of recent emails
-
+- **Voice-Ready Daily Summaries**: Generates intelligent email summaries optimized for listening while driving or commuting
+  - Thread-aware conversation flow (understands email conversations)
+  - Clickable links to open emails directly in Gmail
+  - Adjustable compression levels (detailed to ultra-brief)
+  
 ## Requirements
 
 - Gmail account
@@ -81,15 +84,59 @@ Edit in "Gmail Labeler Parameters" sheet:
 
 **Main Parameters:**
 - `emailCount`: Emails processed per run (default: 10)
-- `maxWords`: Max words sent to AI per email (default: 1000)
+- `maxWords`: Max words sent to AI per email (default: 500)
 - `model`: OpenAI model (default: gpt-4o)
 
-**Optional Summary Parameters:**
+**Summary Parameters:**
 - `summary_emails`: Email addresses for summaries (default: your email)
 - `summary_days`: Days back to include (default: 3)
 - `summary_count`: Max emails per label (default: 20)
 - `summary_time_minutes`: Target listening duration (default: 20)
+- `summary_compression`: Detail level - `detailed`/`standard`/`succinct`/`very succinct` (default: standard)
 - `summary_prompt`: AI instructions for summaries
+
+## Email Summaries
+
+The summary feature generates voice-ready email summaries sent daily at 6am. Each summary includes clickable links to open emails directly in Gmail.
+
+### Compression Levels
+
+Control summary detail with the `summary_compression` parameter:
+
+- **detailed**: Full context with background information  
+  *"John Smith from Marketing sent a detailed project update on Tuesday regarding the Q3 campaign launch, mentioning that the creative assets are behind schedule and requesting a meeting to discuss revised timelines."*
+
+- **standard**: Balanced summary with key information (default)  
+  *"John Smith sent a project update on Tuesday about Q3 campaign delays and requested a meeting to discuss timelines."*
+
+- **succinct**: Brief summary focusing on main points  
+  *"John Smith: Q3 campaign delayed, wants meeting about timelines."*
+
+- **very succinct**: Ultra-brief, just essential facts  
+  *"John: project delayed, meeting needed."*
+
+### Summary Format
+
+Each email includes a `[View]` link to open the thread directly in Gmail:
+
+```
+Work: 5 emails (spanning: Monday to Wednesday)
+
+John Smith sent project update on Tuesday about Q3 campaign delays. [View]
+
+Sarah Johnson needs budget approval by Friday for new software licenses. [View]
+
+Personal: 2 emails (last received: Wednesday)
+
+Mom shared photos from weekend trip to Portland. [View]
+```
+
+### Advanced Configuration
+
+- **Multiple Recipients**: Add comma-separated emails to `summary_emails`
+- **Custom Timeframes**: Adjust `summary_days` (1-7 days recommended)
+- **Volume Control**: Set `summary_count` per label to manage length
+- **Voice Optimization**: `summary_time_minutes` sets target listening duration
 
 ## Cost
 
@@ -105,9 +152,11 @@ Edit in "Gmail Labeler Parameters" sheet:
 **Script errors:**
 - Check "Executions" tab in Google Apps Script for detailed logs
 
-**Summary issues (if using summaries):**
-- Check `summary_emails` parameter is set
-- Verify you have emails in configured labels
+**Summary issues:**
+- Check `summary_emails` parameter is set correctly
+- Verify you have emails in configured labels from the past few days
+- Ensure compression level is one of: `detailed`, `standard`, `succinct`, `very succinct`
+- Check "Executions" tab for detailed summary generation logs
 
 ## How It Works
 
@@ -117,6 +166,6 @@ Edit in "Gmail Labeler Parameters" sheet:
 4. **AI classification**: Sends structured prompts to OpenAI Chat Completions API with email content
 5. **Label application**: Creates Gmail labels via API if missing, applies classifications automatically
 6. **State tracking**: Marks processed emails with 'ai' label to prevent redundant API calls
-7. **Optional summarization**: Aggregates classified emails, generates summaries via OpenAI, delivers via Gmail API
+7. **Optional summarization**: Groups emails by thread, processes each conversation separately with OpenAI, applies compression levels, generates clickable Gmail links, formats as HTML email with bold labels
 
 Runs on Google Apps Script runtime with automatic retry handling and error logging. No local storage required.

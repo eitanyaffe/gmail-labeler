@@ -17,12 +17,12 @@ const DEFAULT_PARAMETERS = {
 	resorting: "F",
 	style: "days",
 	dayCount: 1,
-	maxWords: 1000,
+	maxWords: 500,
 	summary_days: 3,
 	summary_count: 20,
 	summary_time_minutes: 20,
 	summary_emails: Session.getActiveUser().getEmail(),
-	summary_prompt: "Create a brief, professional summary for listening while driving. Focus on key actionable items and important matters that need attention. Be concise and skip pleasantries. Organize by priority and urgency."
+	summary_prompt: "You are an assistant to a busy professional creating voice-ready email summaries for listening while driving. Write exactly one sentence per email. Estimate reading time at ~150 words per minute. When approaching time limit, stop and say 'and there were X more emails in this label'. Skip newsletters and notifications. Start with time-sensitive emails first, then chronologically from oldest. Use sender names when available. Use natural relative time. Identify urgency, deadlines, patient communications. Format: '[Label]: X emails spanning Y days.' followed by one sentence per email. Remember: This person is driving and needs clear, actionable information."
 };
 
 function createLabelsSheet_() {
@@ -109,7 +109,7 @@ function createParametersSheet_() {
 			["resorting", "F"],
 			["style", "days"],
 			["dayCount", "1"],
-			["maxWords", "1000"],
+			["maxWords", "500"],
 			["summary_days", "3"],
 			["summary_count", "20"],
 			["summary_time_minutes", "20"],
@@ -325,6 +325,9 @@ function classifyAndLabelEmails() {
 			thread.addLabel(processedLabel);
 
 			const label = callOpenAIClassify_(subject, body, attachmentNames, labelConfig, parameters.model, parameters.apiKey);
+
+			// log the label
+			Logger.log("Label: " + label);
 
 			// skip if label is other
 			if (label === "Other") continue;

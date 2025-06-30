@@ -239,9 +239,9 @@ function callOpenAISummarizeThread_(threadEmails, model, apiKey, maxWords, userE
 			return `${threadInfo ? threadInfo + '\n' : ''}From: ${email.from}\nSubject: ${email.subject}\nDate: ${email.date.toDateString()}\nBody: ${truncateToMaxWords_(email.body, maxWords)}`;
 		}).join('\n\n---\n\n');
 
-		// determine user name for personalization from email address
-		const nameToReplace = userEmail ? userEmail.split('@')[0].replace(/[._]/g, ' ') : '';
-		Logger.log(`using email-based personalization: "${nameToReplace}" -> "You"`);
+		// extract recipient name from email address for natural personalization
+		const recipientName = userEmail ? userEmail.split('@')[0].replace(/[._]/g, ' ').split(' ')[0] : 'the recipient';
+		Logger.log(`using recipient name for natural personalization: "${recipientName}"`);
 
 		const isThread = optimizedEmails.length > 1;
 		const threadType = isThread ? 'thread' : 'single email';
@@ -267,8 +267,8 @@ ${THREAD_SUMMARY_PROMPT}
 
 CURRENT TASK:
 This is a ${threadType} with ${optimizedEmails.length} email${optimizedEmails.length > 1 ? 's' : ''} (${threadEmails.length - optimizedEmails.length > 0 ? `optimized from ${threadEmails.length} total` : 'complete thread'}).
-The email recipient is: ${userEmail}
-When referring to "${nameToReplace}" or variations of this name, use "You" instead.
+The email recipient is: ${recipientName}
+When referring to the email recipient, use "${recipientName}" naturally with proper grammar and capitalization.
 
 CURRENT DATE CONTEXT:
 Today is ${currentDayName}, ${currentDateString}. Use this to create specific day references like "yesterday (on Monday)", "today (Tuesday)", etc.

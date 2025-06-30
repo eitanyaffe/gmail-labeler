@@ -1,142 +1,151 @@
-# gmail-labeler
+# Gmail Auto-Organizer for Healthcare Professionals
 
-Automatically classify and label your Gmail threads using OpenAI with configuration managed through Google Sheets.
+Never waste time sorting through your overflowing inbox again. This tool automatically reads your emails and organizes them into folders (called "labels" in Gmail) based on their content - just like having a smart assistant who never sleeps.
 
-## Overview
+## What This Does For You
 
-This Google Apps Script automatically analyzes your latest Gmail threads, assigns them to custom labels (e.g., "_A", "_B", "_C"), and labels them directly in Gmail. The labels and parameters are managed through Google Sheets, making it easy to customize without editing code.
+**Problem**: As a healthcare professional, you receive hundreds of emails daily - patient communications, lab results, administrative notices, personal messages, and more. Finding important emails in this chaos wastes precious time.
 
-## Features
+**Solution**: This tool uses artificial intelligence to read each email and automatically sort it into categories you define. For example:
+- Patient communications → "Patients" label
+- Lab results → "Lab Results" label  
+- Administrative emails → "Admin" label
+- Personal emails → "Personal" label
+- Everything else → Stays unlabeled
 
-- Uses OpenAI (GPT-4o) to semantically classify emails.
-- Adds Gmail labels automatically.
-- Sends a friendly summary email to yourself after each run.
-- **Label configuration managed through Google Sheets** - no code editing needed!
-- **Configurable parameters** (email count, AI model) through Google Sheets.
-- Automatic Google Sheets creation with sample data.
+**Result**: Open Gmail and see your emails already organized. Find what you need instantly. Spend more time on patient care, less time hunting through emails.
+
+## What You'll Need
+
+- Your Gmail account (the one you already use)
+- An OpenAI account (costs about $3-10/month depending on email volume)
+- 30 minutes for initial setup
+
+## How It Works
+
+1. **You define categories**: Create a simple list of email types you want (e.g., "Patients", "Lab Results", "Insurance", "Personal")
+2. **The AI learns your system**: It reads your email categories and understands what belongs where
+3. **Automatic sorting**: Every 10 minutes (or however often you choose), it reads new emails and files them appropriately
+4. **You see organized email**: Open Gmail to find everything already sorted into the right folders
+
+## Setup Instructions
+
+### Step 1: Set Up the Email Organizer
+
+1. Go to [script.google.com](https://script.google.com) and sign in with your Gmail account
+2. Click "New project" and give it a name like "Email Organizer"
+3. Delete any existing code and paste in the code from `label.js` (found in this project)
+4. Click the save icon and name your project
+
+### Step 2: Create Your Email Categories
+
+1. In the script editor, find the dropdown that says "Select function"
+2. Choose "setupSheets" from the dropdown
+3. Click "Run" (you'll need to give permissions the first time)
+4. This creates two Google Sheets for you to customize
+
+### Step 3: Customize Your Categories
+
+1. Open Google Sheets and look for a sheet called "Gmail Labeler Labels"
+2. You'll see sample categories like "dogs", "cats", "god" - replace these with your own:
+   - **Column A**: Category name (e.g., "Patients", "Lab Results", "Insurance")
+   - **Column B**: Description to help the AI understand (e.g., "Emails from or about patients", "Laboratory test results and reports")
+
+**Example categories for doctors:**
+- Patients: Communications from or about patients
+- Lab Results: Laboratory tests, pathology reports, diagnostic results
+- Insurance: Insurance companies, claims, authorizations
+- Pharmacy: Prescription-related communications
+- Colleagues: Messages from other healthcare professionals
+- Admin: Administrative notices, hospital communications
+- Personal: Non-work related emails
+- Other: Everything else
+
+### Step 4: Get Your AI Key
+
+1. Go to [platform.openai.com](https://platform.openai.com) and create an account
+2. Add a payment method (required - the free tier isn't sufficient)
+3. Go to "API keys" and create a new key
+4. Copy this key - you'll need it in the next step
+
+### Step 5: Add Your AI Key
+
+1. Open the "Gmail Labeler Parameters" Google Sheet
+2. Find the row with "apiKey" and replace "API_KEY" with your actual key from OpenAI
+3. Optionally adjust other settings:
+   - **emailCount**: How many emails to process each time (default: 10)
+   - **model**: The AI model to use (default: gpt-4o is recommended)
+
+### Step 6: Test It
+
+1. Back in the script editor, choose "classifyAndLabelEmails" from the dropdown
+2. Click "Run" to test
+3. Check your Gmail - you should see new labels created and some emails organized
+4. If there are errors, check the "Executions" tab in the script editor
+
+### Step 7: Make It Automatic
+
+1. Click the clock icon ("Triggers") in the script editor
+2. Click "Add Trigger"
+3. Choose:
+   - Function: `classifyAndLabelEmails`
+   - Event source: Time-driven
+   - Type: Minutes timer
+   - Every: 10 minutes (or your preference)
+4. Save
+
+## Your New Workflow
+
+1. **Emails arrive** throughout the day as usual
+2. **Every 10 minutes** (or your chosen interval), the organizer runs automatically
+3. **Open Gmail** to see emails already sorted into labeled folders
+4. **Find emails instantly** by clicking on labels in Gmail's left sidebar
+5. **Adjust categories** anytime by editing your Google Sheets
+
+## Cost
+
+- **OpenAI**: Approximately $3-10/month depending on email volume (most doctors fall in the $3-5 range)
+- **Google Apps Script**: Free
+- **Gmail**: Free (or whatever you already pay)
+
+## Tips for Best Results
+
+- **Be specific in descriptions**: Instead of "work emails", use "emails about patient care, treatment plans, or medical consultations"
+- **Start simple**: Begin with 4-5 categories, add more later if needed
+- **Check regularly**: Look at the organized emails for the first week to see if categories need adjustment
+- **Use "Other" category**: Don't try to categorize everything - let miscellaneous emails go to "Other"
+
+## Troubleshooting
+
+- **No emails being organized**: Check that your OpenAI API key is correct and has billing enabled
+- **Wrong categories**: Edit the descriptions in your Labels sheet to be more specific
+- **Too expensive**: Reduce the number of emails processed per run in your Parameters sheet
+- **Missing emails**: The tool only processes recent emails; older emails remain untouched
 
 ---
 
-## Requirements
+## Implementation Details
 
-- **Gmail account** (your normal Gmail).
-- **OpenAI account** with an active billing setup (trial credits alone usually insufficient).
-- Google Apps Script (part of your Google account).
+This system uses Google Apps Script (JavaScript) to connect Gmail with OpenAI's GPT models. When triggered, it:
 
-## Setup
+1. Reads configuration from two Google Sheets:
+   - "Gmail Labeler Labels": Contains label names and descriptions
+   - "Gmail Labeler Parameters": Contains settings like email count and AI model
+2. Fetches recent emails from Gmail based on your settings (either last N emails or emails from last N days)
+3. Sends email content to OpenAI's API for classification
+4. Creates Gmail labels automatically if they don't exist  
+5. Applies appropriate labels to emails
+6. Marks processed emails with an "ai" label to avoid reprocessing
+7. Handles errors gracefully to prevent breaking your Gmail
 
-### 1. Create Google Apps Script project
+**Technical requirements:**
+- Google Apps Script environment
+- OpenAI API key with billing enabled
+- Gmail API access (automatically granted through Apps Script)
+- Google Sheets API access (automatically granted through Apps Script)
 
-- Go to: https://script.google.com/
-- Click **New project**.
-- Name it, for example: `Gmail Labeler`.
-
-### 2. Paste the code
-
-- Copy the entire code below into the script editor.
-- Replace `API_KEY` with your OpenAI key (in **both places** in the code).
-- Save the project.
-
-### 3. Set up Google Sheets (Automatic)
-
-- In the Apps Script editor, select the `setupSheets` function from the dropdown.
-- Click **Run**.
-- Grant permissions when prompted.
-- This creates two spreadsheets:
-  - **"Gmail Labeler Labels"** - Contains your label definitions
-  - **"Gmail Labeler Parameters"** - Contains configuration parameters
-
-### 4. Configure your labels (Optional)
-
-Open the **"Gmail Labeler Labels"** spreadsheet and customize:
-- Column A: Label name (e.g., "_A", "_B", "_C", "Other")
-- Column B: Description for the AI to understand when to use this label
-
-Default labels:
-- `_A`: Emails involving AI or Evo2
-- `_B`: Emails related to work, projects, or colleagues  
-- `_C`: Mentioning Manuel
-- `Other`: Any other email
-
-### 5. Configure parameters (Optional)
-
-Open the **"Gmail Labeler Parameters"** spreadsheet and adjust:
-- `emailCount`: Number of emails to process each run (default: 10)
-- `model`: OpenAI model to use (default: gpt-4o)
-
-### 6. Get your OpenAI API key
-
-- Sign up or log in: https://platform.openai.com/signup
-- Add a payment method and ensure billing is enabled.
-- Create an API key: https://platform.openai.com/api-keys
-- Copy the key and replace `API_KEY` in your script.
-
-### 7. Create Gmail labels
-
-In Gmail, manually create labels that match your label names from the spreadsheet (e.g., "_A", "_B", "_C", "Other").
-
-### 8. Test the setup
-
-- In Apps Script, select `classifyAndLabelEmails` function.
-- Click **Run** to test.
-- Check logs under "Executions" for any errors.
-
-### 9. Set up automatic trigger
-
-- Click the clock icon ("Triggers") in Apps Script.
-- Click "+ Add Trigger".
-- Choose function: `classifyAndLabelEmails`.
-- Event source: Time-driven.
-- Type: Every 10 minutes (or any interval you like).
-- Save.
-
-## Google Sheets Structure
-
-### Labels Sheet ("Gmail Labeler Labels")
-```
-| Label | Description                              |
-|-------|------------------------------------------|
-| _A    | Emails involving AI or Evo2             |
-| _B    | Emails related to work, projects, or... |
-| _C    | Mentioning Manuel                        |
-| Other | Any other email                          |
-```
-
-### Parameters Sheet ("Gmail Labeler Parameters")  
-```
-| Parameter  | Value   |
-|------------|---------|
-| emailCount | 10      |
-| model      | gpt-4o  |
-```
-
-## How it works
-
-- Reads label definitions from Google Sheets
-- Reads configuration parameters from Google Sheets
-- Processes the specified number of recent inbox threads
-- Classifies each email using OpenAI with your custom labels
-- Labels threads in Gmail
-- Falls back to default values if sheets are unavailable
-
-## Manual Sheet Setup (Alternative)
-
-If automatic setup doesn't work, you can create the sheets manually:
-
-1. **Create "Gmail Labeler Labels" spreadsheet:**
-   - Column A header: "Label"
-   - Column B header: "Description" 
-   - Add your label definitions in rows below
-
-2. **Create "Gmail Labeler Parameters" spreadsheet:**
-   - Column A header: "Parameter" 
-   - Column B header: "Value"
-   - Add parameters like `emailCount` and `model`
-
-## Notes
-
-- Customize labels easily by editing the Google Sheets - no code changes needed!
-- Logs appear under "Executions" in Apps Script after each run.
-- Your OpenAI account must have an active payment method and sufficient quota.
-- If Google Sheets are unavailable, the script uses built-in defaults and continues working.
-- The script does nothing if it encounters errors, ensuring it won't break your Gmail.
+**Security notes:**
+- Your emails are sent to OpenAI for processing
+- API key is stored in Google Sheets (keep the Parameters sheet private)
+- All processing happens in Google's cloud infrastructure
+- No data is stored permanently by this script

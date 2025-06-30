@@ -1,6 +1,6 @@
 // Voice-optimized summary prompt - edit this to customize AI behavior
 // This prompt is designed for listening while driving: one sentence per email, 
-// urgency detection, natural voice flow, time management per label.
+// urgency detection, natural voice flow, emphasizing what people need from you.
 const DEFAULT_SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
 
 CRITICAL REQUIREMENTS:
@@ -15,6 +15,7 @@ CONTENT RULES:
 - For unknown senders, describe what they represent (e.g. "the billing department", "a potential client", "the journal Nature")
 - Use natural relative time ("this morning", "yesterday", "Monday", "three days ago")
 - Sound like a professional assistant speaking naturally
+- EMPHASIZE what people are asking for, requesting, or need from You - make their requests clear and actionable
 - When emails are part of the same thread, summarize the conversation flow rather than individual emails
 - For threaded conversations, mention the progression (e.g. "john asked about the project, You responded with questions, and he clarified the timeline")
 - For lengthy threads (marked as "LENGTHY THREAD"), mention this is a long conversation and you're focusing on recent activity (e.g. "john and You have been discussing the project in a lengthy thread, with the most recent exchange showing...")
@@ -26,12 +27,12 @@ URGENCY DETECTION:
 - Recognize professional stress indicators and respond appropriately
 
 FORMAT:
-- Start each label with: "[Label name]: X emails spanning Y days."
-- One sentence per email capturing: who, what they want/need, when if urgent
-- For threaded conversations: treat the entire thread as one summary sentence describing the conversation flow
+- Start each label with: "[Label name]: X emails/threads."
+- One sentence per email capturing: who, what they want/need from You, when if urgent
+- For threaded conversations: treat the entire thread as one summary sentence describing the conversation flow and what's needed from You
 - End with count if time runs out: "and there were X more emails in this label."
 
-Remember: This person is driving and needs clear, actionable information they can act on when they have time.`;
+Remember: This person is driving and needs clear, actionable information about what others need from them so they can act when they have time.`;
 
 // Thread-specific prompt for individual thread processing
 const THREAD_SUMMARY_PROMPT = `You are an assistant to a busy professional creating voice-ready email summaries for listening while driving.
@@ -45,12 +46,13 @@ COMPRESSION LEVELS:
 - very succinct: Ultra-brief, just essential facts
 
 RULES:
-- For single emails: Write exactly one sentence capturing who, what they want/need, when if urgent
-- For threads (multiple emails): Write 1-2 sentences describing the conversation flow and current status
+- For single emails: Write exactly one sentence capturing who, what they want/need from You, when if urgent
+- For threads (multiple emails): Write 1-2 sentences describing the conversation flow and what's currently needed from You
 - Use sender's actual name when available (first and last name preferred)
 - For unknown senders, describe what they represent (e.g. "the billing department", "a potential client")
 - Use specific day references combining relative and absolute time (e.g. "yesterday (on Monday)", "today (Tuesday)", "last Friday", "this morning (Wednesday)")
 - Sound like a professional assistant speaking naturally
+- EMPHASIZE what people are requesting, asking for, or need from You - make their requests clear and actionable
 - Skip newsletters, notifications, confirmations completely
 
 URGENCY DETECTION:
@@ -58,7 +60,7 @@ URGENCY DETECTION:
 - Mention specific deadlines when critical (e.g. "john said the paper is due tomorrow")
 - Flag urgent items by leading with urgency ("URGENT: sarah needs...")
 
-Remember: This person is driving and needs clear, actionable information they can act on when they have time.`;
+Remember: This person is driving and needs clear, actionable information about what others need from them so they can act when they have time.`;
 
 // Default summary parameters (constants are shared from label.js)
 const DEFAULT_SUMMARY_PARAMETERS = {
@@ -354,9 +356,9 @@ function callOpenAISummarizeLabel_(emailsData, labelName, model, apiKey, maxWord
 
 		// combine thread summaries with label header
 		const totalEmails = emailsData.length;
-		const timeRange = formatTimeRange_(emailsData);
+		const threadCount = threadIds.length;
 
-		let labelSummary = `<b>${labelName}</b>: ${totalEmails} emails (${timeRange})\n\n`;
+		let labelSummary = `<b>${labelName}</b>: ${totalEmails} emails across ${threadCount} threads\n\n`;
 		threadSummaries.forEach(summary => {
 			labelSummary += summary + '\n\n';
 		});
@@ -456,8 +458,7 @@ function generateEmailSummary() {
 
 		// build voice-optimized email content (HTML formatted)
 		summaryContent += `<b>Email Summary - ${new Date().toDateString()}</b><br><br>`;
-		summaryContent += `Total: ${totalEmails} emails from the last ${parameters.summary_days} days<br>`;
-		summaryContent += `Target listening time: ${parameters.summary_time_minutes} minutes<br><br>`;
+		summaryContent += `Total: ${totalEmails} emails from the last ${parameters.summary_days} days<br><br>`;
 
 		// add voice-ready summaries (now includes label headers)
 		for (const labelSummary of labelSummaries) {
